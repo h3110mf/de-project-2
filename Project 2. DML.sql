@@ -96,55 +96,29 @@ select
 ---хххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххххx-
 -------------view shipping_datamart  -----------------------------------------------------
 
----  transfer_type           Взять данные из public.shipping_transfer
-
---- full_day_at_shipping     Высчитывается как:shipping_end_fact_datetime-shipping_start_fact_datetime ОКРУГЛИТЬ ДО целого / - date_part('day',...)
-
---- is_delay                 Высчитывается как:shipping_end_fact_datetime > shipping_end_plan_datetime → 1 ; 0
-
---- is_shipping_finish       Если финальный public.shipping.status = finished → 1; 0
-
---- delay_day_at_shipping    условие (shipping_end_fact_datetime >> shipping_end_plan_datetime), тогда → shipping_end_fact_datetime -− shipping_plan_datetime ; 0   / - age()
-
---- payment_amount           Взять данные из public.shipping_info
-
---- vat                      payment_amount * ( shipping_country_base_rate + agreement_rate + shipping_transfer_rate) .
-
---- profit                   payment_amount * agreement_commission
-
 
 create or replace view public.shipping_datamart as (
 select 
 	pss.shippingid as shippingid,
 	psi.vendorid as vendorid,
 	pst.transfer_type as transfer_type,
-	case 
-             when pss.shipping_end_fact_datetime is not null
-             then 
-	         floor((extract (epoch from age(pss.shipping_end_fact_datetime, pss.shipping_start_fact_datetime)))/84600)
-	     else 
-                 null end as full_day_at_shipping,
-	case 
-             when pss.shipping_end_fact_datetime is not null 
-                 then
-	             (case 
-                          when pss.shipping_end_fact_datetime > psi.shipping_plan_datetime 
-                               then 1 
-                               else 0 
-                      end)
-	          else null 
-             end as is_delay,
-	case 
-             when pss.status = 'finished' 
-                  then 1 
-                  else 0 
-             end as is_shipping_finish,
-	case 
-             when pss.shipping_end_fact_datetime > psi.shipping_plan_datetime 
+	EXTRACT(DAY FROM (shipping_end_fact_datetime - shipping_start_fact_datetime)) AS full_day_at_shipping,
+	(case 
+         when pss.shipping_end_fact_datetime > psi.shipping_plan_datetime
+         then 1 
+         else 0 
+    end) as is_delay,
+	(case 
+         when pss.status = 'finished' 
+             then 1 
+             else 0 
+        end) as is_shipping_finish,
+	(case 
+         when pss.shipping_end_fact_datetime > psi.shipping_plan_datetime 
                   then 
-	              floor((extract (epoch from age(pss.shipping_end_fact_datetime, psi.shipping_plan_datetime)))/84600)
+	              EXTRACT(DAY FROM (pss.shipping_end_fact_datetime - psi.shipping_plan_datetime))
 	          else 0 
-             end as delay_day_at_shipping,
+             end) as delay_day_at_shipping,
 	psi.payment_amount as payment_amount,
 	psi.payment_amount * (scr.shipping_country_base_rate + psa.agreement_rate + pst.shipping_transfer_rate) as vat,
 	psi.payment_amount * psa.agreement_commission as profit
@@ -158,6 +132,4 @@ from public.shipping_status pss
 	left join public.shipping_agreement psa 
                   on psi.agreementid = psa.agreementid
 	                                              );
-------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------
+iu
